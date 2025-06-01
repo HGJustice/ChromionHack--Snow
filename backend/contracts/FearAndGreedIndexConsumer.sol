@@ -16,7 +16,7 @@ contract FearAndGreedIndexConsumer is FunctionsClient {
         0x66756e2d6176616c616e6368652d66756a692d31000000000000000000000000;
     uint32 gasLimit = 300000;
     uint256 public index;
-    uint24 constant SUBSCRIPTION_ID = 15521;
+    uint24 constant SUBSCRIPTION_ID = 15520;
 
     event Response(
         bytes32 indexed requestId,
@@ -37,7 +37,7 @@ contract FearAndGreedIndexConsumer is FunctionsClient {
 
     constructor() FunctionsClient(router) {}
 
-    function sendRequest() internal returns (bytes32 requestId) {
+    function sendRequest() external returns (bytes32 requestId) {
         FunctionsRequest.Request memory req;
         req.initializeRequestForInlineJavaScript(source);
 

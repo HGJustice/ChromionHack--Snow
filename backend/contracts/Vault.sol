@@ -9,16 +9,34 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 contract Vault is ERC4626Fees, FearAndGreedIndexConsumer {
     address payable public vaultOwner;
     address payable public aiAgent;
-    uint256 public feeRate;
+    uint256 public amountReserves = 0;
+    uint256 public amountDeployed = 0;
 
     constructor(
         IERC20 _asset,
-        uint256 _feeRate,
         address _aiAgent
-    ) ERC4626(_asset) ERC20("", "") {
+    ) ERC4626(_asset) ERC20("vTylersGay", "vTGAY") {
         vaultOwner = payable(msg.sender);
-        feeRate = _feeRate;
         aiAgent = payable(_aiAgent);
+    }
+
+    function deposit(
+        uint256 assets,
+        address receiver
+    ) public override returns (uint256) {
+        require(
+            assets <= maxDeposit(receiver),
+            "ERC4626: deposit more than max"
+        );
+
+        uint256 shares = previewDeposit(assets);
+        _deposit(_msgSender(), receiver, assets, shares);
+
+        uint256 vaultBalance = IERC20(asset()).balanceOf(address(this));
+        uint256 deployedAmount = (vaultBalance * 8000) / 10000; // 80%
+        afterDeposit(assets, deployedAmount);
+
+        return shares;
     }
 
     function _entryFeeBasisPoints() internal view override returns (uint256) {
@@ -46,40 +64,9 @@ contract Vault is ERC4626Fees, FearAndGreedIndexConsumer {
         return vaultOwner;
     }
 
-    function deposit(
-        uint256 assets,
-        address receiver
-    ) public virtual override returns (uint256) {
-        require(
-            assets <= maxDeposit(receiver),
-            "ERC4626: deposit more than max"
-        );
-
-        uint256 shares = previewDeposit(assets);
-        _deposit(_msgSender(), receiver, assets, shares);
-        afterDeposit(assets, shares);
-
-        return shares;
+    function afterDeposit(uint256 assets, uint256 deployedAmount) internal {
+        IERC20(asset()).transfer(aiAgent, deployedAmount);
+        amountDeployed += deployedAmount;
+        amountReserves += (assets - deployedAmount);
     }
-
-    function withdraw(
-        uint256 assets,
-        address receiver,
-        address owner
-    ) public virtual override returns (uint256) {
-        require(
-            assets <= maxWithdraw(owner),
-            "ERC4626: withdraw more than max"
-        );
-
-        uint256 shares = previewWithdraw(assets);
-        beforeWithdraw(assets, shares);
-        _withdraw(_msgSender(), receiver, owner, assets, shares);
-
-        return shares;
-    }
-
-    function afterDeposit(uint256 assets, uint256 shares) internal virtual {}
-
-    function beforeWithdraw(uint256 assets, uint256 shares) internal virtual {}
 }
