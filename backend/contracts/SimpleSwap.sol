@@ -62,18 +62,18 @@ contract SimpleSwap {
         pairBinSteps[0] = 20;
 
         ILBRouter.Version[] memory versions = new ILBRouter.Version[](1);
-        versions[0] = ILBRouter.Version.V2_2;
+        versions[0] = ILBRouter.Version.V2_1;
 
         ILBRouter.Path memory path; // instanciate and populate the path to perform the swap.
         path.pairBinSteps = pairBinSteps;
         path.versions = versions;
         path.tokenPath = tokenPath;
 
-        (, uint256 amountOut, ) = router.getSwapOut(pair, amountIn, false);
-        uint256 amountOutWithSlippage = (amountOut * 99) / 100; // We allow for 1% slippage
-        uint256 amountOutReal = router.swapExactTokensForNATIVE(
+        // (, uint256 amountOut, ) = router.getSwapOut(pair, amountIn, true);
+        // uint256 amountOutWithSlippage = amountOut * 99 / 100; // We allow for 1% slippage
+        router.swapExactTokensForNATIVE(
             amountIn,
-            amountOutWithSlippage,
+            0,
             path,
             msg.sender,
             block.timestamp + 1
