@@ -15,7 +15,7 @@ contract Vault is ERC4626Fees, FearAndGreedIndexConsumer {
     constructor(
         IERC20 _asset,
         address _aiAgent
-    ) ERC4626(_asset) ERC20("vTylersGay", "vTGAY") {
+    ) ERC4626(_asset) ERC20("", "") {
         vaultOwner = payable(msg.sender);
         aiAgent = payable(_aiAgent);
     }
