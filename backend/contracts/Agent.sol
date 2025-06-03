@@ -10,10 +10,9 @@ contract Agent {
     IERC20 public USDC = IERC20(0xB6076C93701D6a07266c31066B298AeC6dd65c2d);
     IERC20 public WAVAX = IERC20(0xd00ae08403B9bbb9124bB305C09058E32C39A48c);
 
-    function swapUSDCForAVAX(uint128 amountIn) external {
-        USDC.transferFrom(msg.sender, address(this), amountIn);
-
-        USDC.approve(address(router), amountIn);
+    function swapUSDCForAVAX(uint128 _amountIn) external {
+        USDC.transferFrom(msg.sender, address(this), _amountIn);
+        USDC.approve(address(router), _amountIn);
 
         IERC20[] memory tokenPath = new IERC20[](2);
         tokenPath[0] = USDC;
@@ -31,7 +30,31 @@ contract Agent {
         path.tokenPath = tokenPath;
 
         router.swapExactTokensForNATIVE(
-            amountIn,
+            _amountIn,
+            0,
+            path,
+            msg.sender,
+            block.timestamp + 1
+        );
+    }
+
+    function swapAVAXforUSDC(uint128 _amountIn) external payable {
+        IERC20[] memory tokenPath = new IERC20[](2);
+        tokenPath[0] = WAVAX;
+        tokenPath[1] = USDC;
+
+        uint256[] memory pairBinSteps = new uint256[](1);
+        pairBinSteps[0] = 20;
+
+        ILBRouter.Version[] memory versions = new ILBRouter.Version[](1);
+        versions[0] = ILBRouter.Version.V2_1;
+
+        ILBRouter.Path memory path;
+        path.pairBinSteps = pairBinSteps;
+        path.versions = versions;
+        path.tokenPath = tokenPath;
+
+        router.swapExactNATIVEForTokens{value: _amountIn}(
             0,
             path,
             msg.sender,
