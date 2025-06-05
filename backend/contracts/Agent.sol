@@ -8,21 +8,32 @@ import "./interfaces/ILBRouter.sol";
 import "./interfaces/IWrappedTokenGateway.sol";
 
 contract Agent {
-    ILBRouter router = ILBRouter(0x18556DA13313f3532c54711497A8FedAC273220E);
-    IERC20 USDC = IERC20(0xB6076C93701D6a07266c31066B298AeC6dd65c2d);
-    IERC20 WAVAX = IERC20(0xd00ae08403B9bbb9124bB305C09058E32C39A48c);
+    ILBRouter immutable router =
+        ILBRouter(0x18556DA13313f3532c54711497A8FedAC273220E);
+    IERC20 immutable USDC = IERC20(0xB6076C93701D6a07266c31066B298AeC6dd65c2d); //Trader Joe
+    IERC20 immutable WAVAX = IERC20(0xd00ae08403B9bbb9124bB305C09058E32C39A48c);
 
-    IPool immutable POOL;
-    IWrappedTokenGateway immutable WRAPPED_TOKEN_GATEWAY;
+    IPool immutable POOL = IPool(0x8B9b2AF4afB389b4a70A474dfD4AdCD4a302bb40);
+    IWrappedTokenGateway immutable WRAPPED_TOKEN_GATEWAY =
+        IWrappedTokenGateway(0x3d2ee1AB8C3a597cDf80273C684dE0036481bE3a);
+    IERC20 immutable aFUJWAVAX =
+        IERC20(0x50902e21C8CfB5f2e45127c1Bbcd6B985119b433); //AAVE
+
+    address payable owner;
+
+    error NotOwner();
+
+    event swappedUSDCforAVAX();
+    event swappedAVAXforUSDC();
+    event liquiditySuppliedAAVE();
+    event liquidityWithdrawnAAVE();
 
     constructor() {
-        POOL = IPool(0x8B9b2AF4afB389b4a70A474dfD4AdCD4a302bb40);
-        WRAPPED_TOKEN_GATEWAY = IWrappedTokenGateway(0x3d2ee1AB8C3a597cDf80273C684dE0036481bE3a);
+        owner = payable(msg.sender);
     }
 
-    function swapUSDCForAVAX(uint128 _amountIn) external {
-        USDC.transferFrom(msg.sender, address(this), _amountIn);
-        USDC.approve(address(router), _amountIn);
+    function swapUSDCForAVAX() external {
+        USDC.approve(address(router), USDC.balanceOf(address(this)));
 
         IERC20[] memory tokenPath = new IERC20[](2);
         tokenPath[0] = USDC;
@@ -40,15 +51,15 @@ contract Agent {
         path.tokenPath = tokenPath;
 
         router.swapExactTokensForNATIVE(
-            _amountIn,
+            USDC.balanceOf(address(this)),
             0,
             path,
-            msg.sender,
+            address(this),
             block.timestamp + 1
         );
     }
 
-    function swapAVAXforUSDC(uint128 _amountIn) external payable {
+    function swapAVAXforUSDC() external payable {
         IERC20[] memory tokenPath = new IERC20[](2);
         tokenPath[0] = WAVAX;
         tokenPath[1] = USDC;
@@ -64,20 +75,40 @@ contract Agent {
         path.versions = versions;
         path.tokenPath = tokenPath;
 
-        router.swapExactNATIVEForTokens{value: _amountIn}(
+        router.swapExactNATIVEForTokens{value: address(this).balance}(
             0,
             path,
-            msg.sender,
+            address(this),
             block.timestamp + 1
         );
     }
 
-    function supplyAaveLiquidity() external payable {
-        WRAPPED_TOKEN_GATEWAY.depositETH{value: msg.value}(address(POOL), msg.sender, 0);
+    function supplyAaveLiquidity() external {
+        WRAPPED_TOKEN_GATEWAY.depositETH{value: address(this).balance}(
+            address(POOL),
+            address(this),
+            0
+        );
     }
 
-    function withdrawAaveLiquidity(uint256 _amount) external {
-        WRAPPED_TOKEN_GATEWAY.withdrawETH(address(POOL), _amount, msg.sender);
+    function withdrawAaveLiquidity() external {
+        aFUJWAVAX.approve(
+            address(WRAPPED_TOKEN_GATEWAY),
+            address(this).balance
+        );
+        WRAPPED_TOKEN_GATEWAY.withdrawETH(
+            address(POOL),
+            aFUJWAVAX.balanceOf(address(this)),
+            address(this)
+        );
+    }
+
+    function withdraw() external {
+        if (msg.sender != owner) {
+            revert NotOwner();
+        }
+        (bool sent, ) = owner.call{value: address(this).balance}("");
+        require(sent, "tx failed");
     }
 
     receive() external payable {}
