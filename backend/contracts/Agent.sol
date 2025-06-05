@@ -23,16 +23,26 @@ contract Agent {
 
     error NotOwner();
 
-    event swappedUSDCforAVAX();
-    event swappedAVAXforUSDC();
-    event liquiditySuppliedAAVE();
-    event liquidityWithdrawnAAVE();
+    event swappedUSDCforAVAX(uint256 usdcAmountIn, uint256 avaxAmountOut);
+    event swappedAVAXforUSDC(uint256 avaxAmountIn, uint256 usdcAmountOut);
+    event liquiditySuppliedAAVE(uint256 avaxAmount, uint256 aTokensReceived);
+    event liquidityWithdrawnAAVE(
+        uint256 aTokensWithdrawn,
+        uint256 avaxReceived
+    );
 
     constructor() {
         owner = payable(msg.sender);
     }
 
-    function swapUSDCForAVAX() external {
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert NotOwner();
+        _;
+    }
+
+    function swapUSDCForAVAX() external onlyOwner {
+        uint256 usdcAmountIn = USDC.balanceOf(address(this));
+        uint256 avaxBalanceBefore = address(this).balance;
         USDC.approve(address(router), USDC.balanceOf(address(this)));
 
         IERC20[] memory tokenPath = new IERC20[](2);
@@ -57,9 +67,15 @@ contract Agent {
             address(this),
             block.timestamp + 1
         );
+
+        uint256 avaxAmountOut = address(this).balance - avaxBalanceBefore;
+        emit swappedUSDCforAVAX(usdcAmountIn, avaxAmountOut);
     }
 
-    function swapAVAXforUSDC() external payable {
+    function swapAVAXforUSDC() external onlyOwner {
+        uint256 avaxAmountIn = address(this).balance;
+        uint256 usdcBalanceBefore = USDC.balanceOf(address(this));
+
         IERC20[] memory tokenPath = new IERC20[](2);
         tokenPath[0] = WAVAX;
         tokenPath[1] = USDC;
@@ -81,32 +97,46 @@ contract Agent {
             address(this),
             block.timestamp + 1
         );
+
+        uint256 usdcAmountOut = USDC.balanceOf(address(this)) -
+            usdcBalanceBefore;
+        emit swappedAVAXforUSDC(avaxAmountIn, usdcAmountOut);
     }
 
-    function supplyAaveLiquidity() external {
+    function supplyAaveLiquidity() external onlyOwner {
+        uint256 avaxAmount = address(this).balance;
+        uint256 aTokensBefore = aFUJWAVAX.balanceOf(address(this));
+
         WRAPPED_TOKEN_GATEWAY.depositETH{value: address(this).balance}(
             address(POOL),
             address(this),
             0
         );
+
+        uint256 aTokensReceived = aFUJWAVAX.balanceOf(address(this)) -
+            aTokensBefore;
+        emit liquiditySuppliedAAVE(avaxAmount, aTokensReceived);
     }
 
-    function withdrawAaveLiquidity() external {
+    function withdrawAaveLiquidity() external onlyOwner {
+        uint256 aTokensWithdrawn = aFUJWAVAX.balanceOf(address(this));
+        uint256 avaxBalanceBefore = address(this).balance;
+
         aFUJWAVAX.approve(
             address(WRAPPED_TOKEN_GATEWAY),
-            address(this).balance
+            aFUJWAVAX.balanceOf(address(this))
         );
         WRAPPED_TOKEN_GATEWAY.withdrawETH(
             address(POOL),
             aFUJWAVAX.balanceOf(address(this)),
             address(this)
         );
+
+        uint256 avaxReceived = address(this).balance - avaxBalanceBefore;
+        emit liquidityWithdrawnAAVE(aTokensWithdrawn, avaxReceived);
     }
 
-    function withdraw() external {
-        if (msg.sender != owner) {
-            revert NotOwner();
-        }
+    function withdraw() external onlyOwner {
         (bool sent, ) = owner.call{value: address(this).balance}("");
         require(sent, "tx failed");
     }
