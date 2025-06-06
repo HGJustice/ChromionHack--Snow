@@ -1,0 +1,13 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+remappings = [
+    "@openzeppelin/=lib/openzeppelin-contracts/",
+    "@aave/core-v3/=lib/aave-v3-core/",
+
+]
+
+[profile.default.model_checker]
+contracts = { "backend/solidity/src/Agent.sol" = ["0.8.25"], "backend/solidity/src/Vault.sol" = ["0.8.26"],  "backend/solidity/src/FearAndGreedIndexConsumer.sol" = ["0.8.26"]}
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
