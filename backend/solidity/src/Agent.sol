@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.25;
 
-import {IPool} from "../lib/aave-v3-core/contracts/interfaces/IPool.sol";
-import {IPoolAddressesProvider} from "../lib/aave-v3-core/contracts/interfaces/IPoolAddressesProvider.sol";
-import "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IPool} from "@aave/core-v3/contracts/interfaces/IPool.sol";
+import {IPoolAddressesProvider} from "@aave/core-v3/contracts/interfaces/IPoolAddressesProvider.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./interfaces/ILBRouter.sol";
 import "./interfaces/IWrappedTokenGateway.sol";
 
@@ -20,6 +20,7 @@ contract Agent {
         IERC20(0x50902e21C8CfB5f2e45127c1Bbcd6B985119b433); //AAVE
 
     address payable owner;
+    address payable vault;
 
     error NotOwner();
 
@@ -31,8 +32,9 @@ contract Agent {
         uint256 avaxReceived
     );
 
-    constructor() {
+    constructor(address _vault) {
         owner = payable(msg.sender);
+        vault = payable(vault);
     }
 
     modifier onlyOwner() {
@@ -136,7 +138,11 @@ contract Agent {
         emit liquidityWithdrawnAAVE(aTokensWithdrawn, avaxReceived);
     }
 
-    function withdraw() external onlyOwner {
+    function withdrawTokens(uint256 _amount) external onlyOwner {
+        USDC.transfer(_amount, vault);
+    }
+
+    function withdrawNATIVE() external onlyOwner {
         (bool sent, ) = owner.call{value: address(this).balance}("");
         require(sent, "tx failed");
     }
