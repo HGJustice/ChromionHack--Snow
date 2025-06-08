@@ -20,7 +20,7 @@ contract Agent {
         IERC20(0x50902e21C8CfB5f2e45127c1Bbcd6B985119b433); //AAVE
 
     address payable owner;
-    address payable vault;
+    address vault;
 
     error NotOwner();
 
@@ -32,9 +32,8 @@ contract Agent {
         uint256 avaxReceived
     );
 
-    constructor(address _vault) {
+    constructor() {
         owner = payable(msg.sender);
-        vault = payable(vault);
     }
 
     modifier onlyOwner() {
@@ -138,13 +137,14 @@ contract Agent {
         emit liquidityWithdrawnAAVE(aTokensWithdrawn, avaxReceived);
     }
 
-    function withdrawTokens(uint256 _amount) external onlyOwner {
-        USDC.transfer(_amount, vault);
+    function setVaultAddress(address _vaultAddy) external onlyOwner {
+        vault = _vaultAddy;
     }
 
-    function withdrawNATIVE() external onlyOwner {
-        (bool sent, ) = owner.call{value: address(this).balance}("");
-        require(sent, "tx failed");
+    function withdrawTokens(uint256 _amount) external {
+        // require(msg.sender == vault, "Not vault contract");
+        // approve?
+        USDC.transfer(vault, _amount);
     }
 
     receive() external payable {}
