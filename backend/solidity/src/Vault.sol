@@ -1,150 +1,104 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.25;
+pragma solidity 0.8.26;
 
-import {IPool} from "@aave/core-v3/contracts/interfaces/IPool.sol";
-import {IPoolAddressesProvider} from "@aave/core-v3/contracts/interfaces/IPoolAddressesProvider.sol";
+import "src/ERC4626Fees.sol";
+import "src/FearAndGreedIndexConsumer.sol";
+import "src/interfaces/IAgent.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "./interfaces/ILBRouter.sol";
-import "./interfaces/IWrappedTokenGateway.sol";
 
-contract Agent {
-    ILBRouter immutable router =
-        ILBRouter(0x18556DA13313f3532c54711497A8FedAC273220E);
-    IERC20 immutable USDC = IERC20(0xB6076C93701D6a07266c31066B298AeC6dd65c2d); //Trader Joe
-    IERC20 immutable WAVAX = IERC20(0xd00ae08403B9bbb9124bB305C09058E32C39A48c);
+contract Vault is ERC4626Fees, FearAndGreedIndexConsumer {
+    IERC20 immutable USDC = IERC20(0xB6076C93701D6a07266c31066B298AeC6dd65c2d);
+    IAgent immutable AgentContract;
 
-    IPool immutable POOL = IPool(0x8B9b2AF4afB389b4a70A474dfD4AdCD4a302bb40);
-    IWrappedTokenGateway immutable WRAPPED_TOKEN_GATEWAY =
-        IWrappedTokenGateway(0x3d2ee1AB8C3a597cDf80273C684dE0036481bE3a);
-    IERC20 immutable aFUJWAVAX =
-        IERC20(0x50902e21C8CfB5f2e45127c1Bbcd6B985119b433); //AAVE
+    address payable public vaultOwner;
+    uint256 public amountReserves = 0;
+    uint256 public amountDeployed = 0;
 
-    address payable owner;
-    address vault;
+    event LiquidityRequested(uint256 amount);
 
-    error NotOwner();
-
-    event swappedUSDCforAVAX(uint256 usdcAmountIn, uint256 avaxAmountOut);
-    event swappedAVAXforUSDC(uint256 avaxAmountIn, uint256 usdcAmountOut);
-    event liquiditySuppliedAAVE(uint256 avaxAmount, uint256 aTokensReceived);
-    event liquidityWithdrawnAAVE(
-        uint256 aTokensWithdrawn,
-        uint256 avaxReceived
-    );
-
-    constructor() {
-        owner = payable(msg.sender);
+    constructor(
+        address _agentContract
+    ) ERC4626(USDC) ERC20("vaultUSDC", "vUSDC") {
+        vaultOwner = payable(msg.sender);
+        AgentContract = IAgent(_agentContract);
     }
 
-    modifier onlyOwner() {
-        if (msg.sender != owner) revert NotOwner();
-        _;
-    }
-
-    function swapUSDCForAVAX() external onlyOwner {
-        uint256 usdcAmountIn = USDC.balanceOf(address(this));
-        uint256 avaxBalanceBefore = address(this).balance;
-        USDC.approve(address(router), USDC.balanceOf(address(this)));
-
-        IERC20[] memory tokenPath = new IERC20[](2);
-        tokenPath[0] = USDC;
-        tokenPath[1] = WAVAX;
-
-        uint256[] memory pairBinSteps = new uint256[](1);
-        pairBinSteps[0] = 20;
-
-        ILBRouter.Version[] memory versions = new ILBRouter.Version[](1);
-        versions[0] = ILBRouter.Version.V2_1;
-
-        ILBRouter.Path memory path;
-        path.pairBinSteps = pairBinSteps;
-        path.versions = versions;
-        path.tokenPath = tokenPath;
-
-        router.swapExactTokensForNATIVE(
-            USDC.balanceOf(address(this)),
-            0,
-            path,
-            address(this),
-            block.timestamp + 1
+    function deposit(
+        uint256 _amountIn,
+        address receiver
+    ) public override returns (uint256) {
+        require(
+            _amountIn <= maxDeposit(receiver),
+            "ERC4626: deposit more than max"
         );
 
-        uint256 avaxAmountOut = address(this).balance - avaxBalanceBefore;
-        emit swappedUSDCforAVAX(usdcAmountIn, avaxAmountOut);
+        uint256 shares = previewDeposit(_amountIn);
+        _deposit(_msgSender(), receiver, _amountIn, shares);
+
+        uint256 vaultBalance = USDC.balanceOf(address(this));
+        uint256 deployAmount = (vaultBalance * 8000) / 10000; // 80%
+        afterDeposit(deployAmount);
+
+        return shares;
     }
 
-    function swapAVAXforUSDC() external onlyOwner {
-        uint256 avaxAmountIn = address(this).balance;
-        uint256 usdcBalanceBefore = USDC.balanceOf(address(this));
+    function withdraw(
+        uint256 assets,
+        address receiver,
+        address owner
+    ) public override returns (uint256) {
+        uint256 maxAssets = maxWithdraw(owner);
+        if (assets > maxAssets) {
+            revert ERC4626ExceededMaxWithdraw(owner, assets, maxAssets);
+        }
+        uint256 currentBalance = USDC.balanceOf(address(this));
+        if (currentBalance < assets) {
+            uint256 neededAmount = assets - currentBalance;
+            requestLiquidity(neededAmount);
+        }
 
-        IERC20[] memory tokenPath = new IERC20[](2);
-        tokenPath[0] = WAVAX;
-        tokenPath[1] = USDC;
+        uint256 shares = previewWithdraw(assets);
+        _withdraw(_msgSender(), receiver, owner, assets, shares);
 
-        uint256[] memory pairBinSteps = new uint256[](1);
-        pairBinSteps[0] = 20;
-
-        ILBRouter.Version[] memory versions = new ILBRouter.Version[](1);
-        versions[0] = ILBRouter.Version.V2_1;
-
-        ILBRouter.Path memory path;
-        path.pairBinSteps = pairBinSteps;
-        path.versions = versions;
-        path.tokenPath = tokenPath;
-
-        router.swapExactNATIVEForTokens{value: address(this).balance}(
-            0,
-            path,
-            address(this),
-            block.timestamp + 1
-        );
-
-        uint256 usdcAmountOut = USDC.balanceOf(address(this)) -
-            usdcBalanceBefore;
-        emit swappedAVAXforUSDC(avaxAmountIn, usdcAmountOut);
+        return shares;
     }
 
-    function supplyAaveLiquidity() external onlyOwner {
-        uint256 avaxAmount = address(this).balance;
-        uint256 aTokensBefore = aFUJWAVAX.balanceOf(address(this));
-
-        WRAPPED_TOKEN_GATEWAY.depositETH{value: address(this).balance}(
-            address(POOL),
-            address(this),
-            0
-        );
-
-        uint256 aTokensReceived = aFUJWAVAX.balanceOf(address(this)) -
-            aTokensBefore;
-        emit liquiditySuppliedAAVE(avaxAmount, aTokensReceived);
+    function requestLiquidity(uint256 _amountIn) internal {
+        AgentContract.withdrawTokens(_amountIn);
+        amountDeployed -= _amountIn;
+        amountReserves = USDC.balanceOf(address(this));
+        emit LiquidityRequested(_amountIn);
     }
 
-    function withdrawAaveLiquidity() external onlyOwner {
-        uint256 aTokensWithdrawn = aFUJWAVAX.balanceOf(address(this));
-        uint256 avaxBalanceBefore = address(this).balance;
-
-        aFUJWAVAX.approve(
-            address(WRAPPED_TOKEN_GATEWAY),
-            aFUJWAVAX.balanceOf(address(this))
-        );
-        WRAPPED_TOKEN_GATEWAY.withdrawETH(
-            address(POOL),
-            aFUJWAVAX.balanceOf(address(this)),
-            address(this)
-        );
-
-        uint256 avaxReceived = address(this).balance - avaxBalanceBefore;
-        emit liquidityWithdrawnAAVE(aTokensWithdrawn, avaxReceived);
+    function afterDeposit(uint256 deployedAmount) internal {
+        USDC.transfer(address(AgentContract), deployedAmount);
+        amountDeployed += deployedAmount;
+        amountReserves = USDC.balanceOf(address(this));
     }
 
-    function setVaultAddress(address _vaultAddy) external onlyOwner {
-        vault = _vaultAddy;
+    function _entryFeeBasisPoints() internal view override returns (uint256) {
+        uint fearNGreed = index;
+
+        if (fearNGreed >= 80) {
+            // Extreme Greed
+            return 150;
+        } else if (fearNGreed >= 60) {
+            // Greed
+            return 125;
+        } else if (fearNGreed >= 40) {
+            // Neutral
+            return 100;
+        } else if (fearNGreed >= 20) {
+            // Fear
+            return 75;
+        } else {
+            // Extreme Fear
+            return 50;
+        }
     }
 
-    function withdrawTokens(uint256 _amount) external {
-        // require(msg.sender == vault, "Not vault contract");
-        USDC.transfer(vault, _amount);
+    function _entryFeeRecipient() internal view override returns (address) {
+        return vaultOwner;
     }
-
-    receive() external payable {}
 }

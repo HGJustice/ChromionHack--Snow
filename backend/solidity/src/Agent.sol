@@ -23,6 +23,7 @@ contract Agent {
     address vault;
 
     error NotOwner();
+    error NotVaultContract();
 
     event swappedUSDCforAVAX(uint256 usdcAmountIn, uint256 avaxAmountOut);
     event swappedAVAXforUSDC(uint256 avaxAmountIn, uint256 usdcAmountOut);
@@ -142,8 +143,9 @@ contract Agent {
     }
 
     function withdrawTokens(uint256 _amount) external {
-        // require(msg.sender == vault, "Not vault contract");
-        // approve?
+        if (msg.sender != vault) {
+            revert NotVaultContract();
+        }
         USDC.transfer(vault, _amount);
     }
 

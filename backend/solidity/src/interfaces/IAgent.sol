@@ -2,5 +2,5 @@
 pragma solidity 0.8.26;
 
 interface IAgent {
-    function emergencyLiquidityWithdraw(uint256 usdcAmount) external;
+    function withdrawTokens(uint256 usdcAmount) external;
 }
