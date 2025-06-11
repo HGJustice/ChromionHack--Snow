@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.26;
+pragma solidity 0.8.25;
 
 import "src/ERC4626Fees.sol";
 import "src/FearAndGreedIndexConsumer.sol";
@@ -52,11 +52,11 @@ contract Vault is ERC4626Fees, FearAndGreedIndexConsumer {
         if (assets > maxAssets) {
             revert ERC4626ExceededMaxWithdraw(owner, assets, maxAssets);
         }
-        uint256 currentBalance = USDC.balanceOf(address(this));
-        if (currentBalance < assets) {
-            uint256 neededAmount = assets - currentBalance;
-            requestLiquidity(neededAmount);
-        }
+        // uint256 currentBalance = USDC.balanceOf(address(this));
+        // if (currentBalance < assets) {           // need to figure out how to run requestLiquidity in this func
+        //     uint256 neededAmount = assets - currentBalance;
+        //     requestLiquidity(neededAmount);
+        // }
 
         uint256 shares = previewWithdraw(assets);
         _withdraw(_msgSender(), receiver, owner, assets, shares);
@@ -64,7 +64,7 @@ contract Vault is ERC4626Fees, FearAndGreedIndexConsumer {
         return shares;
     }
 
-    function requestLiquidity(uint256 _amountIn) internal {
+    function requestLiquidity(uint256 _amountIn) external {
         AgentContract.withdrawTokens(_amountIn);
         amountDeployed -= _amountIn;
         amountReserves = USDC.balanceOf(address(this));
